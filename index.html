@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>자연현상 직관 설문조사</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { Send, BarChart3, Users, MessageSquare, RefreshCw, Download, Trash2 } = lucide;
+
+        // Supabase 설정
+        const supabaseUrl = 'https://kcaxstyuejaecdaafijy.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjYXhzdHl1ZWphZWNkYWFmaWp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTExNzIwNjYsImV4cCI6MjA2Njc0ODA2Nn0.V__xaHzg5hbt2GpIBH1I4CegLx5Fp33cya-Jl93b6hE';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+        const NatureSurveyApp = () => {
+          const [responses, setResponses] = useState([]);
+          const [currentQuestion, setCurrentQuestion] = useState('');
+          const [currentWhen, setCurrentWhen] = useState('');
+          const [showResults, setShowResults] = useState(false);
+          const [isSubmitting, setIsSubmitting] = useState(false);
+          const [isLoading, setIsLoading] = useState(true);
+          const [error, setError] = useState(null);
+
+          // 데이터 불러오기
+          const fetchResponses = async () => {
+            try {
+              setIsLoading(true);
+              const { data, error } = await supabase
+                .from('survey_response_on_questions')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+              if (error) throw error;
+              setResponses(data || []);
+            } catch (err) {
+              setError('데이터를 불러오는데 실패했습니다: ' + err.message);
+              console.error('Error:', err);
+            } finally {
+              setIsLoading(false);
+            }
+          };
+
+          // 컴포넌트 마운트 시 데이터 불러오기
+          useEffect(() => {
+            fetchResponses();
+          }, []);
+
+          // 응답 제출
+          const handleSubmit = async () => {
+            if (!currentQuestion.trim() || !currentWhen.trim()) {
+              alert('두 질문 모두 답변해주세요!');
+              return;
+            }
+
+            setIsSubmitting(true);
+            
+            try {
+              const { data, error } = await supabase
+                .from('survey_response_on_questions')
+                .insert([
+                  {
+                    questions: currentQuestion.trim(),
+                    when_: currentWhen.trim()
+                  }
+                ])
+                .select();
+
+              if (error) throw error;
+
+              // 성공 시 폼 초기화 및 데이터 새로고침
+              setCurrentQuestion('');
+              setCurrentWhen('');
+              alert('응답이 제출되었습니다!');
+              await fetchResponses(); // 새 데이터 불러오기
+              
+            } catch (err) {
+              alert('제출 중 오류가 발생했습니다: ' + err.message);
+              console.error('Submit error:', err);
+            } finally {
+              setIsSubmitting(false);
+            }
+          };
+
+          // CSV 다운로드
+          const exportResponses = () => {
+            const csvContent = [
+              ['번호', '자연현상 질문', '언제 갖게 되었는지', '제출 시간'],
+              ...responses.map((response, index) => [
+                index + 1,
+                `"${response.questions}"`,
+                `"${response.when_}"`,
+                new Date(response.created_at).toLocaleString('ko-KR')
+              ])
+            ].map(row => row.join(',')).join('\n');
+
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `자연현상_설문조사_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+          };
+
+          return React.createElement('div', {
+            className: "min-h-screen bg-gradient-to-br from-blue-50 to-green-50 p-4"
+          }, React.createElement('div', {
+            className: "max-w-4xl mx-auto"
+          }, 
+            // 헤더
+            React.createElement('div', {
+              className: "text-center mb-8"
+            }, 
+              React.createElement('h1', {
+                className: "text-3xl font-bold text-gray-800 mb-2"
+              }, "자연현상에 대한 직관적 질문 설문조사"),
+              React.createElement('p', {
+                className: "text-gray-600 mb-2"
+              }, "자연현상에 대해 갖고 있는 궁금증과 그 질문을 언제 갖게 되었는지 알려주세요"),
+              React.createElement('div', {
+                className: "inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm"
+              }, "✨ 실시간 데이터베이스 연동")
+            ),
+            
+            error && React.createElement('div', {
+              className: "bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6"
+            }, error),
+            
+            React.createElement('div', {
+              className: "grid lg:grid-cols-2 gap-6"
+            },
+              // 설문 양식
+              React.createElement('div', {
+                className: "bg-white rounded-xl shadow-lg p-6"
+              },
+                React.createElement('div', {
+                  className: "flex items-center mb-6"
+                },
+                  React.createElement(MessageSquare, {
+                    className: "text-blue-500 mr-2",
+                    size: 24
+                  }),
+                  React.createElement('h2', {
+                    className: "text-xl font-semibold text-gray-800"
+                  }, "설문 참여")
+                ),
+                
+                React.createElement('div', {
+                  className: "space-y-6"
+                },
+                  React.createElement('div', {},
+                    React.createElement('label', {
+                      className: "block text-sm font-medium text-gray-700 mb-2"
+                    }, "1. 자연현상에 대한 직관적인 질문이 있나요?"),
+                    React.createElement('textarea', {
+                      value: currentQuestion,
+                      onChange: (e) => setCurrentQuestion(e.target.value),
+                      placeholder: "예: 왜 하늘은 파란색일까?, 새들은 어떻게 길을 찾을까? 등",
+                      className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none",
+                      rows: 4,
+                      disabled: isSubmitting
+                    })
+                  ),
+                  
+                  React.createElement('div', {},
+                    React.createElement('label', {
+                      className: "block text-sm font-medium text-gray-700 mb-2"
+                    }, "2. 이 질문을 언제 갖게 되었나요?"),
+                    React.createElement('textarea', {
+                      value: currentWhen,
+                      onChange: (e) => setCurrentWhen(e.target.value),
+                      placeholder: "예: 어릴 때 하늘을 보면서, 최근에 다큐멘터리를 보다가, 산책하면서 등",
+                      className: "w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none",
+                      rows: 3,
+                      disabled: isSubmitting
+                    })
+                  ),
+                  
+                  React.createElement('button', {
+                    onClick: handleSubmit,
+                    disabled: isSubmitting,
+                    className: "w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
+                  },
+                    isSubmitting && React.createElement('div', {
+                      className: "animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"
+                    }),
+                    !isSubmitting && React.createElement(Send, {
+                      className: "mr-2",
+                      size: 20
+                    }),
+                    isSubmitting ? '제출 중...' : '응답 제출'
+                  )
+                )
+              ),
+              
+              // 결과 확인
+              React.createElement('div', {
+                className: "bg-white rounded-xl shadow-lg p-6"
+              },
+                React.createElement('div', {
+                  className: "flex items-center justify-between mb-6"
+                },
+                  React.createElement('div', {
+                    className: "flex items-center"
+                  },
+                    React.createElement(BarChart3, {
+                      className: "text-green-500 mr-2",
+                      size: 24
+                    }),
+                    React.createElement('h2', {
+                      className: "text-xl font-semibold text-gray-800"
+                    }, "실시간 응답")
+                  ),
+                  React.createElement('div', {
+                    className: "flex items-center gap-2"
+                  },
+                    React.createElement('div', {
+                      className: "flex items-center text-sm text-gray-500"
+                    },
+                      React.createElement(Users, {
+                        className: "mr-1",
+                        size: 16
+                      }),
+                      `${responses.length}명 참여`
+                    ),
+                    React.createElement('button', {
+                      onClick: fetchResponses,
+                      disabled: isLoading,
+                      className: "p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                    },
+                      React.createElement(RefreshCw, {
+                        className: isLoading ? "animate-spin" : "",
+                        size: 16
+                      })
+                    )
+                  )
+                ),
+
+                isLoading ? 
+                  React.createElement('div', {
+                    className: "text-center py-8"
+                  },
+                    React.createElement('div', {
+                      className: "animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent mx-auto mb-2"
+                    }),
+                    React.createElement('p', {
+                      className: "text-gray-500"
+                    }, "데이터를 불러오는 중...")
+                  ) :
+                  responses.length === 0 ? 
+                    React.createElement('div', {
+                      className: "text-center py-8 text-gray-500"
+                    },
+                      React.createElement(MessageSquare, {
+                        className: "mx-auto mb-3 opacity-50",
+                        size: 48
+                      }),
+                      React.createElement('p', {}, "아직 제출된 응답이 없습니다."),
+                      React.createElement('p', {
+                        className: "text-sm"
+                      }, "첫 번째 응답을 남겨보세요!")
+                    ) :
+                    React.createElement('div', {
+                      className: "space-y-4"
+                    },
+                      React.createElement('div', {
+                        className: "flex gap-2 mb-4"
+                      },
+                        React.createElement('button', {
+                          onClick: () => setShowResults(!showResults),
+                          className: "px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm transition-colors"
+                        }, showResults ? '응답 숨기기' : '응답 보기'),
+                        React.createElement('button', {
+                          onClick: exportResponses,
+                          className: "px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition-colors flex items-center"
+                        },
+                          React.createElement(Download, {
+                            className: "mr-1",
+                            size: 14
+                          }),
+                          "CSV 다운로드"
+                        )
+                      ),
+                      
+                      showResults && React.createElement('div', {
+                        className: "max-h-96 overflow-y-auto space-y-4"
+                      }, responses.map((response, index) =>
+                        React.createElement('div', {
+                          key: response.id,
+                          className: "border border-gray-200 rounded-lg p-4"
+                        },
+                          React.createElement('div', {
+                            className: "flex justify-between items-start mb-2"
+                          },
+                            React.createElement('span', {
+                              className: "text-sm font-medium text-blue-600"
+                            }, `응답 #${index + 1}`),
+                            React.createElement('span', {
+                              className: "text-xs text-gray-500"
+                            }, new Date(response.created_at).toLocaleString('ko-KR'))
+                          ),
+                          React.createElement('div', {
+                            className: "space-y-2"
+                          },
+                            React.createElement('div', {},
+                              React.createElement('p', {
+                                className: "text-sm font-medium text-gray-700"
+                              }, "질문:"),
+                              React.createElement('p', {
+                                className: "text-gray-800 bg-gray-50 p-2 rounded"
+                              }, response.questions)
+                            ),
+                            React.createElement('div', {},
+                              React.createElement('p', {
+                                className: "text-sm font-medium text-gray-700"
+                              }, "언제:"),
+                              React.createElement('p', {
+                                className: "text-gray-800 bg-gray-50 p-2 rounded"
+                              }, response.when_)
+                            )
+                          )
+                        )
+                      ))
+                    )
+              )
+            ),
+            
+            // 통계 요약
+            responses.length > 0 && React.createElement('div', {
+              className: "mt-6 bg-white rounded-xl shadow-lg p-6"
+            },
+              React.createElement('h3', {
+                className: "text-lg font-semibold text-gray-800 mb-4"
+              }, "실시간 통계"),
+              React.createElement('div', {
+                className: "grid grid-cols-1 md:grid-cols-3 gap-4"
+              },
+                React.createElement('div', {
+                  className: "bg-blue-50 p-4 rounded-lg"
+                },
+                  React.createElement('p', {
+                    className: "text-sm text-blue-600 font-medium"
+                  }, "총 응답 수"),
+                  React.createElement('p', {
+                    className: "text-2xl font-bold text-blue-800"
+                  }, responses.length)
+                ),
+                React.createElement('div', {
+                  className: "bg-green-50 p-4 rounded-lg"
+                },
+                  React.createElement('p', {
+                    className: "text-sm text-green-600 font-medium"
+                  }, "평균 질문 길이"),
+                  React.createElement('p', {
+                    className: "text-2xl font-bold text-green-800"
+                  }, `${Math.round(responses.reduce((acc, r) => acc + r.questions.length, 0) / responses.length)}자`)
+                ),
+                React.createElement('div', {
+                  className: "bg-purple-50 p-4 rounded-lg"
+                },
+                  React.createElement('p', {
+                    className: "text-sm text-purple-600 font-medium"
+                  }, "최근 응답"),
+                  React.createElement('p', {
+                    className: "text-sm font-bold text-purple-800"
+                  }, responses.length > 0 ? new Date(responses[0].created_at).toLocaleString('ko-KR').split(' ')[1] : '-')
+                )
+              )
+            ),
+
+            // 푸터
+            React.createElement('div', {
+              className: "mt-8 text-center text-sm text-gray-500"
+            },
+              React.createElement('p', {}, "🌿 Supabase로 구동되는 실시간 설문조사"),
+              React.createElement('p', {}, "모든 응답은 안전하게 저장됩니다")
+            )
+          ));
+        };
+
+        ReactDOM.render(React.createElement(NatureSurveyApp), document.getElementById('root'));
+    </script>
+</body>
+</html>
